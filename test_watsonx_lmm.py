@@ -1,13 +1,42 @@
 import requests
-
+import os
+import json
+from ibm_watsonx_ai.foundation_models import ModelInference
+from ibm_watsonx_ai import Credentials
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
-from ibm-cloud-sdk-core.example_service_v1 import *
 
-# Create the authenticator.
-authenticator = IAMAuthenticator('myapikey')
+ibm_cloud_api_key = "G8rHsOuVdQEjuMSIhip1kzVpEl8Jny2XMFAyty9mbG8n"
+iam_token_url = "https://iam.cloud.ibm.com/identity/token"
 
-# Construct the service instance.
-service = ExampleServiceV1(authenticator=authenticator)
+iam_body = {
+	"grant_type" : "urn:ibm:params:oauth:grant-type:apikey",
+	"apikey" : ibm_cloud_api_key
+}
+iam_headers = {
+	"Content-Type" : "application/x-www-form-urlencoded",
+	"Accept" : "application/json"
+}
+
+try:
+    iam_response = requests.post(iam_token_url , data=iam_body , headers=iam_headers)
+    iam_response.raise_for_status()
+    
+    iam_data = iam_response.json()
+    access_token = iam_data.get("access_token")
+    
+    if not access_token:
+        raise ValueError("not found 'access_token' in payload ")
+    
+    print("generated token")
+    
+except requests.exceptions.RequestException as re:
+    print(f"Token request error: {re}")
+    exit(1)
+except ValueError as e:
+    print(f"Error parsing payload: {e}")
+    exit(1)
+    
+
 
 # Use 'service' to invoke operations.
 url = "https://us-south.ml.cloud.ibm.com/ml/v1/text/chat?version=2023-05-29"
@@ -26,17 +55,28 @@ body = {
 headers = {
 	"Accept": "application/json",
 	"Content-Type": "application/json",
-	"Authorization": "Bearer ACCESS_TOKEN"
+	"Authorization": f"Bearer {access_token}"
 }
 
+try:
+	response = requests.post(
+		url,
+		headers=headers,
+		json=body
+	)
+	
+	response.raise_for_status()
+ 
+	data = response.json()
 
-response = requests.post(
-	url,
-	headers=headers,
-	json=body
-)
+	print("\nAPI response: ")
+	print(json.dumps(data,indent=2))
 
-if response.status_code != 200:
-	raise Exception("Non-200 response: " + str(response.text))
+except requests.exceptions.RequestException as re:
+    print(f"\nError making api call : {e}")
+    print(F"\nPayload: {response.text}")
+    exit(1)
+# if response.status_code != 200:
+# 	raise Exception("Non-200 response: " + str(response.text))
 
-data = response.json()
+# data = response.json()
