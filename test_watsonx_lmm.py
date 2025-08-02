@@ -26,7 +26,7 @@ body = {
 headers = {
 	"Accept": "application/json",
 	"Content-Type": "application/json",
-	"Authorization": "Bearer ApiKey-dd010e0f-973d-47af-a6df-c032c35df026"
+	"Authorization": "Bearer ACCESS_TOKEN"
 }
 
 
