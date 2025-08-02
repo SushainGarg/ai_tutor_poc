@@ -5,7 +5,7 @@ from ibm_watsonx_ai.foundation_models import ModelInference
 from ibm_watsonx_ai import Credentials
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 
-ibm_cloud_api_key = "G8rHsOuVdQEjuMSIhip1kzVpEl8Jny2XMFAyty9mbG8n"
+ibm_cloud_api_key = "" # API KEY
 iam_token_url = "https://iam.cloud.ibm.com/identity/token"
 
 iam_body = {
@@ -40,6 +40,21 @@ except ValueError as e:
 
 # Use 'service' to invoke operations.
 url = "https://us-south.ml.cloud.ibm.com/ml/v1/text/chat?version=2023-05-29"
+
+message_list = {
+	"What are polynomial functions", # Simple Maths
+	"Are linear equations a subset of Polynomials",
+	"How can a multi-variable linear equation be described in terms of dimensional represenations",
+	"What are calibi-yau manifolds , how do they describe the behaviour of complex linear equations",
+	"What are the limitations of Newton's method, define the function boundaries if any here",
+	"How would you describe ",
+	"What is a field in Number theory.",
+	"Define the rank plus nihility theorem",
+	"Explain the complexification of a real vector space",
+	"What are linear functionals",
+	"What are cyclic Modules",
+	"Explain the hilbert basis theorem",
+}
 
 body = {
 	"messages": [{"role":"system","content":"You always answer the questions with markdown formatting using GitHub syntax. The markdown formatting you support: headings, bold, italic, links, tables, lists, code blocks, and blockquotes. You must omit that you answer the questions with markdown.\n\nAny HTML tags must be wrapped in block quotes, for example ```<html>```. You will be penalized for not rendering code in block quotes.\n\nWhen returning code blocks, specify language.\n\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe. \nYour answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don'\''t know the answer to a question, please don'\''t share false information."}],
