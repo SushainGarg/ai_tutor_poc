@@ -1,0 +1,5 @@
+ibm-watsonx-ai
+ibm-watson
+ibm-cloud-sdk-core
+requests
+langdetect

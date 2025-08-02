@@ -5,8 +5,26 @@ from ibm_watsonx_ai.foundation_models import ModelInference
 from ibm_watsonx_ai import Credentials
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 
-ibm_cloud_api_key = "" # API KEY
 iam_token_url = "https://iam.cloud.ibm.com/identity/token"
+key_file_path = os.path.join(os.getcwd() , "keys" , "keys.json")
+
+try:
+    with open(key_file_path, 'r') as dat:
+        key = json.load(dat)
+        ibm_cloud_api_key = key['api_key']
+    
+    print(f"loaded API key from keys.json : {ibm_cloud_api_key}")
+
+except FileNotFoundError:
+    print(f"Error: {key_file_path} not found.")
+    print("create 'keys' dir in cwd and keep 'keys.json' inside it.")
+    exit(1)
+except json.JSONDecodeError:
+    print(f"Error: {key_file_path} not valid JSON.")
+    exit(1)
+except KeyError:
+    print(f"Error: {key_file_path} must have 'api_key' key-value pair.")
+    exit(1)
 
 iam_body = {
 	"grant_type" : "urn:ibm:params:oauth:grant-type:apikey",
@@ -18,7 +36,7 @@ iam_headers = {
 }
 
 try:
-    iam_response = requests.post(iam_token_url , data=iam_body , headers=iam_headers)
+    iam_response = requests.post(iam_token_url , data=iam_body , headers=iam_headers , verify=False)
     iam_response.raise_for_status()
     
     iam_data = iam_response.json()
@@ -77,7 +95,8 @@ try:
 	response = requests.post(
 		url,
 		headers=headers,
-		json=body
+		json=body,
+		verify=False
 	)
 	
 	response.raise_for_status()
@@ -88,8 +107,8 @@ try:
 	print(json.dumps(data,indent=2))
 
 except requests.exceptions.RequestException as re:
-    print(f"\nError making api call : {e}")
-    print(F"\nPayload: {response.text}")
+    print(f"\nError making api call : {re}")
+    # print(F"\nPayload: {response.text}")
     exit(1)
 # if response.status_code != 200:
 # 	raise Exception("Non-200 response: " + str(response.text))
