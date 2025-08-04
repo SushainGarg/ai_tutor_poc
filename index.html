@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width , initial-scale=1.0">
+    <title>Watsonx Vision Analyse</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+
+        .container {
+            max-width: 800px;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 flex item-center justify-center min-h-screen p-4">
+
+    <div class="container bg-white p-8 rounded-2x1 shadow-x1 flex flex-col items-center">
+        <h1 class="text-3x1 font-bold mb-6 text-gray-800">Watsonx Vision Analyse</h1>
+        <p class="text-gray-600 mb-8 text-center">
+            image upload and ask question
+        </p>
+
+        <div class="w-full flex flex-col items-center mb-6">
+            <input type="file" id="imageInput" accept="image/*" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <div id="imagePreview" class="mt-4 w-full h-64 border-2 border-dash border-gray-300 rounded-lg flex items-center justify-center bg-gray-50 text-gray-400">
+                Image Preview will apear here
+            </div>
+        </div>
+
+        <div class="w-full mb-6">
+            <label for="prompt" class="block text-gray-700 font-semibold mb-2">Prompt: </label>
+            <textarea id="prompt" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" rows="3" placeholder="Image Decription"></textarea>
+        </div>
+
+        <button id="analyzeButton" class="w-full px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:big-indigo-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            Analyse Image
+        </button>
+
+        <div id="loadingIndicator" class="hidden mt-6 text-indigo-600 font-semibold">
+            Analyzing.......
+        </div>
+        
+        <div id="resultBox" class="hidden w-full mt-6 bg-gray-50 p-6 rounded-lg border border-gray-200">
+            <h3 class="text-xl font-bold text-gray-800 mb-2">Result: </h3>
+            <p id="resultText" class="text-gray-700 whitespace-pre-wrap"></p>
+        </div>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput')
+        const imagePreview = document.getElementById('imagePreview')
+        const promptInput = document.getElementById('prompt')
+        const analyzeButton = document.getElementById('analyzeButton')
+        const loadingIndicator = document.getElementById('loadingIndicator')
+        const resultBox = document.getElementById('resultBox')
+        const resultText = document.getElementById('resultText')
+
+        let uploadBaseImage64 = null
+        let uploadedImageMimeType = null
+
+        imageInput.addEventListener('change' , function(event){
+            const file = event.target.files[0];
+            if(file){
+                const reader = new FileReader();
+                reader.onload = function(e){
+                    imagePreview.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-contain rounded-lg" alt="image preview">`;
+                    uploadBaseImage64 = e.target.result.split(',')[1];
+                    uploadedImageMimeType = file.type;
+                };
+                reader.readAsDataURL(file);
+            } else{
+                imagePreview.innerHTML = 'Image preview appearing';
+                uploadBaseImage64 = null;
+                uploadedImageMimeType = null;
+            }
+        });
+
+        analyzeButton.addEventListener('click' , async() => {
+            const prompt = promptInput.value;
+            if(!uploadBaseImage64 || !prompt){
+                alert("Please upload image and enter prompt")
+                return;
+            }
+
+            loadingIndicator.classList.remove('hidden');
+            resultBox.classList.add('hidden')
+            analyzeButton.disabled= true;
+
+            let respTex = '';
+            let retries = 0;
+            let max_retries = 3;
+            const baseDelay = 1000;
+
+            while(retries<max_retries){
+                try{
+                    const w_api_key = "eyJraWQiOiIyMDE5MDcyNCIsImFsZyI6IlJTMjU2In0.eyJpYW1faWQiOiJJQk1pZC02OTgwMDEwUzk0IiwiaWQiOiJJQk1pZC02OTgwMDEwUzk0IiwicmVhbG1pZCI6IklCTWlkIiwianRpIjoiYmMxNjg3YTItNjM0Zi00NjA2LTkxZjYtODliODY1NWIwNmNiIiwiaWRlbnRpZmllciI6IjY5ODAwMTBTOTQiLCJnaXZlbl9uYW1lIjoiU3VzaGFpbiIsImZhbWlseV9uYW1lIjoiR2FyZyIsIm5hbWUiOiJTdXNoYWluIEdhcmciLCJlbWFpbCI6InNnYXJnMTBAamFndWFybGFuZHJvdmVyLmNvbSIsInN1YiI6InNnYXJnMTBAamFndWFybGFuZHJvdmVyLmNvbSIsImF1dGhuIjp7InN1YiI6InNnYXJnMTBAamFndWFybGFuZHJvdmVyLmNvbSIsImlhbV9pZCI6IklCTWlkLTY5ODAwMTBTOTQiLCJuYW1lIjoiU3VzaGFpbiBHYXJnIiwiZ2l2ZW5fbmFtZSI6IlN1c2hhaW4iLCJmYW1pbHlfbmFtZSI6IkdhcmciLCJlbWFpbCI6InNnYXJnMTBAamFndWFybGFuZHJvdmVyLmNvbSJ9LCJhY2NvdW50Ijp7InZhbGlkIjp0cnVlLCJic3MiOiI0NGQxYWIyZjU1ODY0NGNlODU4YWYwYzQxMGMxMTE1YSIsImltc191c2VyX2lkIjoiMTQyNTQ3NDciLCJmcm96ZW4iOnRydWUsImltcyI6IjI5OTYxNjYifSwiaWF0IjoxNzU0MzQ3MjM0LCJleHAiOjE3NTQzNTA4MzQsImlzcyI6Imh0dHBzOi8vaWFtLmNsb3VkLmlibS5jb20vaWRlbnRpdHkiLCJncmFudF90eXBlIjoidXJuOmlibTpwYXJhbXM6b2F1dGg6Z3JhbnQtdHlwZTphcGlrZXkiLCJzY29wZSI6ImlibSBvcGVuaWQiLCJjbGllbnRfaWQiOiJkZWZhdWx0IiwiYWNyIjoxLCJhbXIiOlsicHdkIl19.Wo9X03fT7zVg91fgTjB9SMidxtM63o9_qm0lnA4XMc6aY2oQH_F_Vhze5R4uMBhrp5e7mT09I9vM0irkAZxl3Jc-g7Fbm1lrqLFtQ3VpU0qpUGe_V6PRmbKPRMuWsvKi4hCK7dwqaHj_kuosP2Kg7o3VuRfjcl11u-ogIyeL1P88Hc0Ya01WsC2iOQinsv7pxAa-2iiX0PG5XfjO1r9q8azSujf8BkAmgpUgBdF5olkRGQ_mcRGxxI9UEJqIp1Y2_9Sm80wL-R-yJ41x2cp2RuqAsfWTG_YTWNBWlGt_AroOVvsAnuteweX4Oh4mjyg91VTkiBml_iANh0zAUz77ow"
+                    const w_project_id = "e869834c-a4d3-4d17-8d16-cb6db32b3354"
+                    const w_model_id = "meta-llama/llama-3-2-11b-vision-instruct"
+                    const vision_api_url = "https://us-south.ml.cloud.ibm.com/ml/v1/text/chat?version=2023-05-29"
+
+                    const payload = {
+                        model_id : w_model_id,
+                        messages : [
+                        {
+                            role: "user",
+                            content: [
+                            {
+                                type: "text",
+                                text: prompt
+                            },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: `data:${uploadedImageMimeType};base64,${uploadBaseImage64}`
+                                }
+                            }]
+                        }],
+                        project_id : w_project_id,
+                        parameters: {
+                            decoding_method : "greedy",
+                            max_new_tokens : 100,
+                            temperature : 0.1
+                        }
+                    };
+
+                    const resp = await fetch(vision_api_url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type' : 'application/json',
+                            'Authorization' : `Bearer ${w_api_key}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if(!resp){
+                        if(resp.status === 429){
+                            const delay = baseDelay * (2 ** retries)
+                            console.warn(`rate limit hit, retrying in ${delay}ms ...`);
+                            await new Promise(res => setTimeout(res, delay));
+                            retries++;
+                            continue;
+                        }else{
+                            throw new Error(`API Error: ${resp.statusText}`);
+                        }
+                    }
+
+                    const result = await resp.json();
+
+                    if(result.choices && result.choices.length > 0 && result.choices[0].message){
+                        const contentPs = result.choices[0].message.content
+                        if(Array.isArray(contentPs)){
+                            respTex = contentPs.map(part => part.text).join('\n\n');
+                        }else{
+                            respTex = contentPs;
+                        }
+
+                        break;
+                    }
+                } catch (error) {
+                    respTex = `Unexpected Error : ${error.message}`;
+                }
+            }
+
+            loadingIndicator.classList.add('hidden');
+            resultBox.classList.remove('hidden');
+            resultText.textContent = respTex;
+            analyzeButton.disabled = false;
+        })
+
+
+    </script>
+
+</body>
+</html>
