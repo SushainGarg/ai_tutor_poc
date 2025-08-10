@@ -15,6 +15,9 @@
         .container {
             max-width: 800px;
         }
+        #videoCanvas {
+            display: none;
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
@@ -24,7 +27,31 @@
         <p class="text-gray-600 mb-8 text-center">
             Upload an image and ask a question to get a description or analysis using a Watsonx foundation model.
         </p>
+
         <div class="w-full flex flex-col items-center mb-6">
+            <button id="startWebcamButton" class="w-full px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 mb-4">
+                Start Webcam Recording
+            </button>
+            <video id="webcamVideo" class="w-full rounded-lg shadow-md mb-4 hidden" autoplay muted></video>
+            <canvas id="videoCanvas" width="640" height="480"></canvas>
+            <div id="webcamStatus" class="text-gray-600 text-sm">Webcam not Started</div>
+        </div>
+
+        <div class="w-full flex flex-col items-center mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+            <h3 class="text-xl font-bold mb-4 text-gray-800">
+                Audio Interface
+            </h3>
+            <div class="flex space-x-4 w-full">
+                <button id="startAudioButton" class="flex-1 px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500">Start</button>
+                <button id="stopAudioButton" class="flex-1 px-6 py-3 bg-red-600 text-white font-bold shadow-md rounded-lg hover:bg-red-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus_ring-red-500" disabled>Stop</button>
+            </div> 
+            <div id="audioStatus" class="mt-4 text-gray-600 text-sm">Microphone not started</div>
+            <div id="transcriptionDisplay" class="mt-4 w-full p-4 bg-white border border-gray-300 rounded-lg text-gray-800 h-24 overflow-y-auto">
+                <p>Transcription is here.......</p>
+            </div>
+        </div>
+        <div class="w-full flex flex-col items-center mb-6">
+            <label for="imageInput" class="block text-gray-700 font-semibold mb-2">Or Upload an Image:</label>
             <input type="file" id="imageInput" accept="image/*" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <div id="imagePreview" class="mt-4 w-full h-64 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50 text-gray-400">
                 Image preview will appear here
@@ -48,107 +75,16 @@
             <h3 class="text-xl font-bold text-gray-800 mb-2">Result:</h3>
             <p id="resultText" class="text-gray-700 whitespace-pre-wrap"></p>
         </div>
+
+        <div id="realtimeObservations" class="mt-6 w-full bg-blue-50 p-4 rounded-lg border border-blue-200 text-blue-800">
+            <h3 class="text-lg font-bold mb-2">Real Time Observations:</h3>
+            <p id="videoObservationText">Video: Not Availaible</p>
+            <p id="audioObservationText">Audio: Not Availaible</p>
+            <p id="screenObservationText">Screen: Not Availaible</p>
+        </div>
     </div>
 
-    <script>
-        const imageInput = document.getElementById('imageInput');
-        const imagePreview = document.getElementById('imagePreview');
-        const promptInput = document.getElementById('prompt');
-        const analyzeButton = document.getElementById('analyzeButton');
-        const loadingIndicator = document.getElementById('loadingIndicator');
-        const resultBox = document.getElementById('resultBox');
-        const resultText = document.getElementById('resultText');
-
-        let uploadedImageBase64 = null;
-        let uploadedImageMimeType = null;
-
-        imageInput.addEventListener('change', function(event) {
-            const file = event.target.files && event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    imagePreview.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-contain rounded-lg" alt="Image preview">`;
-                    uploadedImageBase64 = e.target.result.split(',')[1];
-                    uploadedImageMimeType = file.type;
-                };
-                reader.readAsDataURL(file);
-            } else {
-                imagePreview.innerHTML = 'Image preview will appear here';
-                uploadedImageBase64 = null;
-                uploadedImageMimeType = null;
-            }
-        });
-
-        analyzeButton.addEventListener('click', async () => {
-            const prompt = promptInput.value;
-
-            if (!uploadedImageBase64 || !prompt) {
-                alert("Please upload an image and enter a prompt.");
-                return;
-            }
-
-            loadingIndicator.classList.remove('hidden');
-            resultBox.classList.add('hidden');
-            analyzeButton.disabled = true;
-
-            let responseText = '';
-            let retries = 0;
-            const maxRetries = 3;
-            const baseDelay = 1000;
-
-            const PROXY_API_URL = "http://localhost:8080/analyze-image";
-
-            while (retries < maxRetries) {
-                try {
-                    const payload = {
-                        prompt: prompt,
-                        imageUrl: `data:${uploadedImageMimeType};base64,${uploadedImageBase64}`
-                    };
-                    
-                    console.log("Prompt:", payload.prompt);
-                    console.log("Image URL:", payload.imageUrl);
-                    
-                    const response = await fetch(PROXY_API_URL, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    if (!response.ok) {
-                        if (response.status === 429) {
-                            const delay = baseDelay * (2 ** retries);
-                            console.warn(`Rate limit hit. Retrying in ${delay}ms...`);
-                            await new Promise(res => setTimeout(res, delay));
-                            retries++;
-                            continue;
-                        } else {
-                            throw new Error(`Server error: ${response.statusText}`);
-                        }
-                    }
-
-                    const result = await response.json();
-                    
-                    if (result.error) {
-                        responseText = `Error from server: ${result.error}`;
-                    } else {
-                        responseText = result.result;
-                    }
-
-                    break;
-
-                } catch (error) {
-                    responseText = `An unexpected error occurred: ${error.message}`;
-                    break;
-                }
-            }
-
-            loadingIndicator.classList.add('hidden');
-            resultBox.classList.remove('hidden');
-            resultText.textContent = responseText;
-            analyzeButton.disabled = false;
-        });
-    </script>
+    <script src="script.js"></script>
 
 </body>
 </html>
