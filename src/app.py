@@ -1,13 +1,18 @@
 import json
-import os;
-from flask import Flask , request , jsonify
+import os
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 from generate_token import orch_gen_token
-from simple_react_agent import react_loop
 from faster_whisper import WhisperModel
 import base64
 import numpy as np
+import tempfile
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
+from react_agent import ReActAgent
 
 app = Flask(__name__)
 CORS(app)
@@ -24,25 +29,96 @@ WATSONX_MODEL_ID_PARSING = "meta-llama/llama-3-2-3b-instruct"
 
 print('Loading local Whisper Model...')
 try:
-    whisper = WhisperModel("medium.en", device="cpu" , compute_type="int8")
+    whisper = WhisperModel("small.en", device="cpu" , compute_type="int8")
     print('Whisper Loaded Sucessfully')
 except Exception as e:
     print(f'Error loading whisper: {e}')
     whisper = None
     
-    
+print("Loading RAG vector store...")
+try:
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    rag_db = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+    print("RAG vector store loaded successfully!")
+except Exception as e:
+    print(f"Error loading RAG vector store: {e}")
+    rag_db = None
+
 frame_Counter = 0
 desc_counter = 0
 audio_counter = 0
 
-
-print(WATSON_API_KEY)
-
 current_multimodal_observations = {
-    "video": {},
-    "audio": {},
+    "video": {"mood" : "confused", "concentration_level": 40},
+    "audio": {"transcription": 'uuh, quite confused what is meant by vector spaces actually, how do I visualise them and use it for problem solving.'},
     "screen": {}
 }
+
+def get_rag_response(query_text, pedagogical_tool_request):
+    """
+    Retrieves context from the RAG database and generates an LLM response.
+    """
+    if not rag_db:
+        return "RAG system not available."
+
+    print(f"Retrieving documents for query: {query_text}")
+    docs = rag_db.similarity_search(query_text, k=3)
+    
+    # Combine the documents into a single context string
+    context_text = "\n\n".join([doc.page_content for doc in docs])
+    
+    # Create a prompt template that incorporates the retrieved context
+    prompt_template = PromptTemplate.from_template(
+        f"""
+        You are a personalized AI tutor for Linear Algebra. Your responses must be based
+        on the following context and focused on a beginner to intermediate student.
+        
+        Context:
+        {context_text}
+        
+        Student's query: "{query_text}"
+        
+        Task: {pedagogical_tool_request}
+        """
+    )
+    
+    # Create the LLMChain
+    # pseudo-code to show the concept.
+    # llm_chain = LLMChain(llm=your_watsonx_model, prompt=prompt_template)
+    
+    # For now, returning the augmented prompt to verify
+    return prompt_template.format(context=context_text, query=query_text, task=pedagogical_tool_request)
+
+@app.route('/generate-pedagogical-tool', methods=['POST'])
+def generate_pedagogical_tool():
+    """
+    Endpoint to generate content based on RAG.
+    Receives a query and the type of pedagogical tool to generate.
+    """
+    try:
+        data = request.json
+        user_query = data.get('query')
+        # This parameter specifies the type of content 
+        pedagogical_tool = data.get('tool_type', "Explain the concept in simple terms.")
+
+        if not user_query:
+            return jsonify({"error": "A 'query' is required."}), 400
+        
+        # --- RAG Logic Integration ---
+        # This is where we call actual watsonx.ai model
+        # with the RAG-augmented prompt. For the POC, we'll return the prompt
+        # to show that it works.
+        augmented_prompt = get_rag_response(user_query, pedagogical_tool)
+        
+        return jsonify({
+            "status": "success",
+            "augmented_prompt": augmented_prompt,
+        })
+
+    except Exception as e:
+        print(f"Error in /generate-pedagogical-tool: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/analyze-image' , methods =['POST'])
 def analyze_image():
@@ -121,7 +197,7 @@ def process_video_frame():
         if not img_url:
             return jsonify({"Error": "No image data"}) , 400
         frame_Counter += 1
-        vision_prompt_desc =  "Focusing on the person's facial expression and body language, describe with extremeyl high resolution and minute change on signs of mood, engagement, and concentration."
+        vision_prompt_desc =  "Focusing on the person's facial expression and body language, describe with extremeyl high resolution minute changes on signs of mood, engagement, and concentration."
         
         vision_payload = {
             "model_id": WATSON_MODEL_ID,
@@ -252,74 +328,100 @@ def process_video_frame():
         print(f"An unexpected error occurred in /process-video-frame: {e}")
         return jsonify({"error": f"An internal server error occurred: {e}"}), 500
 
-
-@app.route('/run-tutor-react', methods=['POST'])
-
-@app.route('/process-audio-chunk', methods = ['POST'])
+@app.route('/process-audio-chunk', methods=['POST'])
 def process_audio_chunk(): 
-    global audio_counter , whisper
+    global audio_counter, whisper
     
     if not whisper:
-        return jsonify({"error": "Whisper model failed to load"}) , 500
-        
+        return jsonify({"error": "Whisper model failed to load"}), 500
+    
+    temp_file = None
+    transcription_text = ""
+    
     try:
         data = request.json
         audio_data_url = data.get('audio')
         if not audio_data_url:
-            return jsonify({"Error": "No audio Dara provided"}), 400
+            return jsonify({"error": "No audio data provided"}), 400
 
-        header , encoded_dat = audio_data_url.split(',' , 1)
-        audio_bytes = base64.b64encode(encoded_dat)
+        # Split the base64 data from the header
+        header, encoded_dat = audio_data_url.split(',', 1)
         
+        # if not encoded_dat:
+        #     print("Received empty audio data.")
+        #     return jsonify({"status": "failed", "transcription": "Received empty audio chunk."}), 400
+
+        # Decode the base64 audio data into raw bytes
+        audio_bytes = base64.b64decode(encoded_dat)
+        
+        # temp_dir = tempfile.mkdtemp()
+        # temp_file_path = os.path.join(temp_dir, 'audio_chunk.webm')
+        
+        # with open(temp_file_path, 'wb') as temp_file:
+        #     temp_file.write(audio_bytes)
+
         audio_counter += 1
         print(f"-- Audio Transcription API Call #{audio_counter} (Whisper) ----")
-        audio_array = np.frombuffer(audio_bytes , dtype=np.int16).astype(np.float32)/32768.0
-
-        transcripty_text = ""
         
         try:
-            segments , info = whisper.transcribe(audio_array)
+            segments, info = whisper.transcribe(audio_bytes)
             
             for seg in segments:
-                transcripty_text += seg.text
+                transcription_text += seg.text
                 
-            if not transcripty_text:
-                transcripty_text = "Transcription failed"
+            if not transcription_text:
+                transcription_text = "Transcription failed"
                 
         except Exception as e:
             print(f"Whisper failed: {e}")
-            transcripty_text = "Error During Transcription"
+            transcription_text = "Error During Transcription"
             
         current_multimodal_observations['audio'] = {
             "modality": "audio",
-            "transcription": transcripty_text
+            "transcription": transcription_text
         }
         
         print(f"Updated audio Observations: {current_multimodal_observations['audio']}")
-        return jsonify({"status" : "success" , "transcription" : transcripty_text})
+        return jsonify({"status": "success", "transcription": transcription_text})
+
     except Exception as e:
         print(f"Unknown error process-audio-chunk: {e}")
-        return jsonify({'error' : f"internal server error : {e}"})
+        return jsonify({'error': f"Internal server error: {e}"})
 
+    # finally:
+    #     if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
+    #         os.remove(temp_file_path)
+    #     if 'temp_dir' in locals() and os.path.exists(temp_dir):
+    #         os.rmdir(temp_dir)
+
+@app.route('/run-tutor-react', methods=['POST'])
 def run_tutor_react():
     try:
         data = request.json
-        initial_state = data.get('initial_state', "The student is starting a new session on Linear Algebra.")
-        max_iterations = data.get('max_iterations', 5)
+        initial_state = data.get('initial_state', "The student is starting a new session on Linear Algebra and is asking about 'Vector Spaces'.")
+        max_iterations = data.get('max_iterations', 10)
         time_constraint_minutes = data.get('time_constraint_minutes', 10)
-
-        final_response = react_loop(
-            initial_state=initial_state,
-            max_iterations=max_iterations,
-            time_constraint_minutes=time_constraint_minutes,
-            
-            video_obs=current_multimodal_observations["video"],
-            audio_obs=current_multimodal_observations["audio"],
-            screen_obs=current_multimodal_observations["screen"]
+        
+        tutor_agent = ReActAgent(
+            watsonx_api_key=WATSON_API_KEY,
+            watsonx_project_id=WATSON_PROJECT_ID,
+            watsonx_api_url=WATSON_API_TEXT_URL,
+            watsonx_model_id=WATSONX_MODEL_ID_TEXT,
+            rag_db=rag_db,
+            multimodal_observations=current_multimodal_observations
         )
         
-        return jsonify({"tutor_response": final_response, "latest_observations": current_multimodal_observations})
-
+        final_response = tutor_agent.run_react_loop(
+            initial_state=initial_state,
+            max_it=max_iterations,
+            time_constr=time_constraint_minutes,
+        )
+        
+        return jsonify({
+            "tutor_response": final_response,
+            "latest_observations": current_multimodal_observations
+        })
+        
     except Exception as e:
         print(f"Error running ReAct agent: {e}")
         return jsonify({"error": f"Failed to run tutor agent: {e}"}), 500

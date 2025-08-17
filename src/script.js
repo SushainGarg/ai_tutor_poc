@@ -6,18 +6,18 @@ document.addEventListener('DOMContentLoaded', () =>{
     const loadingIndicator = document.getElementById('loadingIndicator');
     const resultBox = document.getElementById('resultBox');
     const resultText = document.getElementById('resultText');
-    const startWebcamButton = document.getElementById('startWebcamButton')
-    const webcamVideo = document.getElementById('webcamVideo')
-    const videoCanvas = document.getElementById('videoCanvas')
-    const videoCanvasContext = document.getContext('2d')
-    const webcamStatus = document.getElementById('webcamStatus')
-    const videoObservationText = document.getElementById('videoObservationText')
     const startAudioButton = document.getElementById('startAudioButton');
     const stopAudioButton = document.getElementById('stopAudioButton')
     const audioStatus = document.getElementById('audioStatus')
     const transcriptionDisplay = document.getElementById('transcriptionDisplay')
     const audioObsText = document.getElementById('audioObservationText')
-
+    const startWebcamButton = document.getElementById('startWebcamButton')
+    const webcamVideo = document.getElementById('webcamVideo')
+    const videoCanvas = document.getElementById('videoCanvas')
+    const videoCanvasContext = videoCanvas.getContext('2d')
+    const webcamStatus = document.getElementById('webcamStatus')
+    const videoObservationText = document.getElementById('videoObservationText')
+    
     let uploadedImageBase64 = null;
     let uploadedImageMimeType = null;
     let webcamStream = null;
@@ -44,9 +44,6 @@ document.addEventListener('DOMContentLoaded', () =>{
         resultBox.style.borderColor = type == 'error' ? 'red' : (type == 'success' ? 'green' : 'blue');
     };
 
-    window.onload - function () {
-    };
-
     startWebcamButton.addEventListener('click', async() => {
         if (webcamStream) {
             webcamStream.getTracks().forEach(track => track.stop());
@@ -58,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () =>{
             webcamStream = null;
             startWebcamButton.textContent = "Start Webcam Recording";
             videoObservationText.textContent = 'Video: Not Availaible'
+            return;
         }
         try{
             webcamStream = await navigator.mediaDevices.getUserMedia({video: true, audio:false});
@@ -147,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () =>{
             startAudioButton.disabled = true;
             stopAudioButton.disabled = false;
             transcriptionDisplay.innerHTML = '<p>Transcription will appear here...</p>'
-            audioObservationText.textContent = 'Audio: Listening....';
+            audioObsText.textContent = 'Audio: Listening....';
             audioInterval = setInterval(() => {
                 if (audioChunks.length > 0){
                     sendAudioChunk(audioChunks);
@@ -169,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () =>{
             audioStatus.textContent = 'Microphone stopped.';
             startAudioButton.disabled = false;
             stopAudioButton.disabled = true;
-            audioObservationText.textContent = 'Audio not Availaible'
+            audioObsText.textContent = 'Audio not Availaible'
         }
     });
 
@@ -184,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () =>{
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({audio: audioBase64Audio})
-                });
+                }); 
 
                 if(!response.ok){
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -193,11 +191,11 @@ document.addEventListener('DOMContentLoaded', () =>{
                 console.log('Audio Transcription:', data);
                 if(data.transcription) {
                     transcriptionDisplay.innerHTML = `<p>${data.transcription}</p>`;
-                    audioObservationText.textContent = `Audio: ${data.transcription}`;
+                    audioObsText.textContent = `Audio: ${data.transcription}`;
                 }
             }catch (error){
                 console.error('Error sending audio chunks:', error);
-                audioObservationText.textContent = 'Audio: Error processing audio';
+                audioObsText.textContent = 'Audio: Error processing audio';
             }
         };
         reader.readAsDataURL(audioBlob)
@@ -218,12 +216,22 @@ document.addEventListener('DOMContentLoaded', () =>{
     });
 
     analyzeButton.addEventListener('click', async () => {
-        const file = imageInput.files[0];
-        const prompt = promptTextarea.value;
+        const prompt = promptInput.value;
         const imageUrl = imagePreview.querySelector('img')?.src;
+        let base64Data = null;
+        let mimeType = null;
 
-        if (!file && !imageUrl) {
-            showMessage('Please select an image or use the webcam stream.', 'error');
+        if (webcamStream) {
+            videoCanvasContext.drawImage(webcamVideo, 0, 0, videoCanvas.width, videoCanvas.height);
+            base64Data = videoCanvas.toDataURL('image/jpeg', 0.8);
+            mimeType = 'image/jpeg';
+        } else if (imageUrl) {
+            base64Data = imageUrl;
+            mimeType = uploadedImageMimeType;
+        }
+
+        if (!base64Data) {
+            showMessage('Please select an image or start the webcam.', 'error');
             return;
         }
 
@@ -242,7 +250,8 @@ document.addEventListener('DOMContentLoaded', () =>{
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt: prompt,
-                    imageUrl: imageUrl
+                    imageUrl: base64Data,
+                    mimeType: mimeType
                 })
             });
 
